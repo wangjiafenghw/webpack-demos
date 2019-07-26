@@ -182,3 +182,215 @@ module.exports = {
 > Tips
 * UglifyJS Webpack Plugin插件用来缩小（压缩优化）js文件，至少需要Node v6.9.0和Webpack v4.0.0版本。
 * webpack 4之前的版本是通过webpack.optimize.CommonsChunkPlugin来压缩js，webpack 4版本之后被移除了，使用config.optimization.splitChunks来代替。
+
+## demo08
+
+```
+module.exports = {
+  entry: './main.js',
+  output: {
+    filename: 'bundle.js'
+  },
+  plugins: [
+    new HtmlwebpackPlugin({
+      title: 'Webpack-demos',
+      filename: 'index.html'
+    }),
+    new OpenBrowserPlugin({
+      url: 'http://localhost:8080'
+    })
+  ]
+};
+
+```
+在这个练习中，使用了两个插件，我们一个一个来看
+
+`HtmlWebpackPlugin`主要最用有两个：
+1. 为html文件中引入的外部资源如script、link动态添加每次compile后的hash，防止引用缓存的外部文件问题
+2. 可以生成创建html入口文件，比如单页面可以生成一个html文件入口，配置N个html-webpack-plugin可以生成N个页面入口
+
+更多的配置用到在学习，这里只看现在用得着的
+`title`: 生成html文件的标题
+`filename`: 输出的html的文件名称
+生成的文件名称可以在webpack启动的服务中按照相应的路径进行访问。
+
+`open-browser-webpack-plugin`的作用是当webpack准备好后打开浏览器到指定url
+我们也发现这个demo中package.json的配置发生变化
+* "dev": "webpack-dev-server ~~--open~~"
+
+## demo09
+
+```
+// 开发环境插件，  为什么要来回转换？？？
+var devFlagPlugin = new webpack.DefinePlugin({
+  __DEV__: JSON.stringify(JSON.parse(process.env.DEBUG || 'false'))
+});
+
+module.exports = {
+  entry: './main.js',
+  output: {
+    filename: 'bundle.js'
+  },
+  plugins: [devFlagPlugin]
+};
+
+```
+js中内容：
+```
+if (__DEV__) {
+  document.write(new Date());
+}
+```
+最终在页面显示出时间
+
+## demo10
+
+```
+// **main.js
+require.ensure(['./a'], function(require) {
+  var content = require('./a');
+  document.open();
+  document.write('<h1>' + content + '</h1>');
+  document.close();
+});
+
+```
+这里使用了js异步加载，通过webpack来实现这一功能，也可以称之为代码分割。
+在webpack看来require.ensure将会形成代码分割线，会将里面的代码再打包一个文件，而在里面require其他js文件的话也会在require.ensure完成之后的回调中请求。特别是一些体积大的三方插件类的代码，会导致首屏时间过长，这一优化很有必要，具体我会在另行学习。
+借用网上的例子，不实用webpack如何实现这一过程：(以百度地图为例)
+```
+mapBtn.click(function() {
+  //获取 文档head对象
+  var head = document.getElementsByTagName('head')[0];
+  //构建 <script>
+  var script = document.createElement('script');
+  //设置src属性
+  script.async = true;
+  script.src = "http://map.baidu.com/.js"
+  //加入到head对象中
+  head.appendChild(script);
+})
+```
+[参考网址](https://www.jianshu.com/p/9fa38e536033)
+
+## demo11 
+```
+// ** main.js
+var load = require('bundle-loader!./a.js');
+
+load(function(file) {
+  document.open();
+  document.write('<h1>' + file + '</h1>');
+  document.close();
+});
+```
+这个练习中还是对main.js文件进行了修改，这里使用了`bundle-loader`,其实我看了一下bundle-loader的源码，内部也是使用require.ensure来实现的，我们类比demo10就可以了。
+
+## demo12
+```
+plugins: [
+  // 抽离多个入口文件的公共部分，打包成公共文件
+    new webpack.optimize.CommonsChunkPlugin({
+      name: "commons",
+      // (the commons chunk name)
+
+      filename: "commons.js",
+      // (the filename of the commons chunk)
+    })
+  ]
+```
+这一插件是用来进行公共代码抽离的，当然以上是webpack3中的写法，在**webpack4**中要像下面这样写：
+```
+module.exports = {
+  optimization: {
+      splitChunks: {
+          cacheGroups: {
+              commons: {
+                  name: "commons",
+                  chunks: "initial",
+                  minChunks: 2
+              }
+          }
+      }
+  },
+}
+```
+
+使用代码抽离后的打包数据：
+```
+     Asset       Size  Chunks                    Chunk Names
+bundle2.js  448 bytes       0  [emitted]         bundle2
+bundle1.js  444 bytes       1  [emitted]         bundle1
+commons.js    1.35 MB       2  [emitted]  [big]  commons
+```
+不使用代码抽离的打包数据：
+```
+     Asset     Size  Chunks                    Chunk Names
+bundle2.js  1.35 MB       0  [emitted]  [big]  bundle2
+bundle1.js  1.35 MB       1  [emitted]  [big]  bundle1
+```
+效果还是很明显的，这个十分重要。
+
+## demo13
+
+```
+module.exports = {
+  entry: {
+    app: './main.js',
+    vendor: ['jquery'],
+  },
+  output: {
+    filename: 'bundle.js'
+  },
+  plugins: [
+    new webpack.optimize.CommonsChunkPlugin({
+      name: 'vendor',
+      filename: 'vendor.js'
+    })
+  ]
+};
+
+```
+这个练习是对demo12的补充，`vendor: ['jquery']`会让webpack引入jquery,并从众多引用的代码中抽离输出vendor.js。
+打包数据如下：
+```
+    Asset       Size  Chunks                    Chunk Names
+bundle.js  312 bytes       0  [emitted]         app
+vendor.js     612 kB       1  [emitted]  [big]  vendor
+```
+
+## demo14
+```
+externals: {
+  // require('data') is external and available
+  //  on the global var data
+  'data': 'data'
+}
+```
+这个练习配置中使用了`externals`,字面含义就是外面的，作用就是将那些不想让webpack打包的文件引入，并且能够在全局调用，就在externals中引用。
+
+```
+// **bundle.js
+"use strict";
+
+
+var data = __webpack_require__(15);
+var React = __webpack_require__(4);
+var ReactDOM = __webpack_require__(19);
+
+ReactDOM.render(React.createElement(
+  'h1',
+  null,
+  data
+), document.body);
+
+/***/ }),
+/* 15 */
+/***/ (function(module, exports) {
+
+module.exports = data;
+
+```
+
+## demo15
+
